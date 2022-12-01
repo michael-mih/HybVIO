@@ -309,17 +309,18 @@ setupInputAndOutput(CommandLineParameters& cmd, VideoConfig& videoConfig,
             inputPath.c_str());
     }
 
-    std::unique_ptr<odometry::InputI> input;
+    // std::unique_ptr<odometry::InputI> input;
+    auto input = odometry::buildInputImu();
 
-    if (odometry::pathHasFile(inputPath, "data.jsonl")) {
-        input = odometry::buildInputJSONL(inputPath, true, main.parametersPath);
-    } else if (odometry::pathHasFile(inputPath, "data.csv")) {
-        input = odometry::buildInputCSV(inputPath);
-    } else {
-        log_warn("No data.{jsonl,csv} file found. Does %s/ exist?",
-            inputPath.c_str());
-        return nullptr;
-    }
+    // if (odometry::pathHasFile(inputPath, "data.jsonl")) {
+    //     input = odometry::buildInputJSONL(inputPath, true, main.parametersPath);
+    // } else if (odometry::pathHasFile(inputPath, "data.csv")) {
+    //     input = odometry::buildInputCSV(inputPath);
+    // } else {
+    //     log_warn("No data.{jsonl,csv} file found. Does %s/ exist?",
+    //         inputPath.c_str());
+    //     return nullptr;
+    // }
 
     // Read camera parameters and such from `data.jsonl` and …
     input->setAlgorithmParametersFromData(cmd.parameters);

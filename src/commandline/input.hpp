@@ -4,6 +4,7 @@
 #include <fstream>
 
 #include <Eigen/Dense>
+#include <memory>
 
 #include "../api/vio.hpp"
 #include "../api/internal.hpp"
@@ -58,6 +59,7 @@ std::unique_ptr<InputI> buildInputJSONL(
     bool requireAllFiles = true,
     const std::string &parametersPathCustom = ""
 );
+std::unique_ptr<InputI> buildInputImu();
 
 // Helpers shared by the CSV and JSONL classes.
 bool pathHasFile(const std::string &path, const std::string &file);

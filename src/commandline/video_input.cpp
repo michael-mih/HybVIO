@@ -1,22 +1,23 @@
 #include "video_input.hpp"
-#include "../util/allocator.hpp"
-#include "../util/logging.hpp"
+#include "../../../librealsense/include/librealsense2/rs.hpp"
 #include "../odometry/parameters.hpp"
-#include "videoutil.hpp"
+#include "../util/allocator.hpp"
 #include "../util/bounded_processing_queue.hpp"
+#include "../util/logging.hpp"
+#include "videoutil.hpp"
 
 #include <cassert>
 #include <iostream>
-#include <sstream>
 #include <opencv2/core.hpp>
-#include <opencv2/videoio.hpp>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/videoio.hpp>
+#include <sstream>
 
 namespace {
 
 struct Reader {
     virtual ~Reader() = default;
-    virtual bool read(cv::Mat &target) = 0;
+    virtual bool read(cv::Mat& target) = 0;
     virtual bool isOk() const = 0;
 };
 
@@ -31,20 +32,28 @@ private:
     util::BoundedInputQueue<cv::Mat> queue;
 
 public:
-    VideoInputImplementation(const std::string &videoPath, std::unique_ptr<Reader> reader, bool ownThread, bool convertToGray) :
-        videoPath(videoPath),
-        reader(std::move(reader)),
-        queue(ownThread ? BUFFER_SIZE : 0, [this, convertToGray](cv::Mat &frame) -> bool {
+    VideoInputImplementation(std::string const& videoPath, std::unique_ptr<Reader> reader, bool ownThread, bool convertToGray)
+        : videoPath(videoPath)
+        , reader(std::move(reader))
+        , queue(ownThread ? BUFFER_SIZE : 0, [this, convertToGray](cv::Mat& frame) -> bool {
             const bool resized = resizeWidth > 0;
-            cv::Mat &target = convertToGray ? colorSource : (resized ? resizeSource : frame);
+            cv::Mat& target = convertToGray ? colorSource : (resized ? resizeSource : frame);
             if (this->reader->read(target)) {
                 if (convertToGray) {
-                    cv::Mat &convertTarget = resized ? resizeSource : frame;
+                    cv::Mat& convertTarget = resized ? resizeSource : frame;
                     switch (target.channels()) {
-                        case 1: target.copyTo(convertTarget); break;
-                        case 3: cv::cvtColor(target, convertTarget, cv::COLOR_BGR2GRAY); break;
-                        case 4: cv::cvtColor(target, convertTarget, cv::COLOR_BGRA2GRAY); break;
-                        default: assert(false && "invalid color format"); break;
+                    case 1:
+                        target.copyTo(convertTarget);
+                        break;
+                    case 3:
+                        cv::cvtColor(target, convertTarget, cv::COLOR_BGR2GRAY);
+                        break;
+                    case 4:
+                        cv::cvtColor(target, convertTarget, cv::COLOR_BGRA2GRAY);
+                        break;
+                    default:
+                        assert(false && "invalid color format");
+                        break;
                     }
                 }
                 if (resized) {
@@ -55,33 +64,39 @@ public:
             }
             return true;
         })
-    {}
+    {
+    }
 
-    double probeFPS() final {
+    double probeFPS() final
+    {
         return videoutil::ffprobeFps(videoPath);
     }
 
-    void probeResolution(int &w, int &h) final {
+    void probeResolution(int& w, int& h) final
+    {
         bool success = videoutil::ffprobeResolution(videoPath, w, h);
         assert(success && w > 0 && h > 0);
     }
 
-    std::shared_ptr<cv::Mat> readFrame() final {
+    std::shared_ptr<cv::Mat> readFrame() final
+    {
         return queue.get();
     }
 
-    void resize(int width, int height) final {
+    void resize(int width, int height) final
+    {
         resizeWidth = width;
         resizeHeight = height;
     }
 };
 
-struct FFMpegReader: Reader {
+struct FFMpegReader : Reader {
     int width = 0;
     int height = 0;
-    FILE *pipe = nullptr;
+    FILE* pipe = nullptr;
 
-    FFMpegReader(const std::string &videoPath, const std::string vf) {
+    FFMpegReader(std::string const& videoPath, const std::string vf)
+    {
         bool success = videoutil::ffprobeResolution(videoPath, width, height);
         if (success) {
             assert(success && width > 0 && height > 0);
@@ -92,24 +107,27 @@ struct FFMpegReader: Reader {
 
             constexpr bool VERBOSE = false;
 
-            std::stringstream ss; ss << "ffmpeg -i "
-                << videoPath
-                << " -f rawvideo -vcodec rawvideo -vsync vfr"
-                << filters.str()
-                << " -pix_fmt bgr24 -"
-                << (VERBOSE ? "" : " 2>/dev/null");
+            std::stringstream ss;
+            ss << "ffmpeg -i "
+               << videoPath
+               << " -f rawvideo -vcodec rawvideo -vsync vfr"
+               << filters.str()
+               << " -pix_fmt bgr24 -"
+               << (VERBOSE ? "" : " 2>/dev/null");
 
             log_debug("Running: %s", ss.str().c_str());
             pipe = popen(ss.str().c_str(), "r");
         }
     }
 
-    ~FFMpegReader() {
+    ~FFMpegReader()
+    {
         fflush(pipe);
         pclose(pipe);
     }
 
-    bool read(cv::Mat &frame) final {
+    bool read(cv::Mat& frame) final
+    {
 
         if (frame.empty()) {
             frame = cv::Mat(height, width, CV_8UC3);
@@ -124,7 +142,8 @@ struct FFMpegReader: Reader {
         return count == n;
     }
 
-    bool isOk() const final {
+    bool isOk() const final
+    {
         return pipe != nullptr;
     }
 };
@@ -132,26 +151,35 @@ struct FFMpegReader: Reader {
 struct OpenCVReader : Reader {
     cv::VideoCapture videoCapture;
 
-    OpenCVReader(const std::string &videoPath) {
+    OpenCVReader(std::string const& videoPath)
+    {
         videoCapture = cv::VideoCapture(videoPath);
     }
 
-    bool read(cv::Mat &frame) final {
+    bool read(cv::Mat& frame) final
+    {
         return videoCapture.read(frame);
     }
 
-    bool isOk() const final {
+    bool isOk() const final
+    {
         return videoCapture.isOpened();
     }
+};
+
+extern rs2::frame g_last_video_frame;
+
+class RSReader : Reader {
 };
 }
 
 std::unique_ptr<VideoInput> VideoInput::build(
-        const std::string &fileName,
-        const bool convertVideoToGray,
-        const bool videoReaderThreads,
-        const bool ffmpeg,
-        const std::string &vf) {
+    std::string const& fileName,
+    bool const convertVideoToGray,
+    bool const videoReaderThreads,
+    bool const ffmpeg,
+    std::string const& vf)
+{
     auto reader = ffmpeg
         ? std::unique_ptr<Reader>(new FFMpegReader(fileName, vf))
         : std::unique_ptr<Reader>(new OpenCVReader(fileName));
