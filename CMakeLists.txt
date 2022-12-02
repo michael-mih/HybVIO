@@ -168,11 +168,8 @@ if(BUILD_CLI_TOOLS)
 
   add_executable(main
     src/commandline/command_queue.cpp
-    src/commandline/input.cpp
-    src/commandline/input_csv.cpp
-    src/commandline/input_jsonl.cpp
-    src/commandline/main.cpp
-    src/commandline/video_input.cpp
+    src/commandline/input_imu.cpp
+    src/commandline/main2.cpp
     src/commandline/videoutil.cpp
     ${VISU_SRCS}
     ${SLAM_SRCS})
