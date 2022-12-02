@@ -3,6 +3,10 @@
 #include "../api/types.hpp"
 #include "input.hpp"
 
+static constexpr auto WIDTH = 1280,
+                      HEIGHT = 720,
+                      FPS = 30;
+
 InputImu::InputImu()
 {
     rs2::config cfg;
@@ -35,35 +39,38 @@ std::pair<InputType, rs2::frame> InputImu::next_frame();
     return { type, frame };
 }
 
-std::string InputImu::getInputVideoPath(int cameraInd) const
-{
-    assert(!"Doesn't work");
-}
-
 void InputImu::set_parameters(CommandLineParameters& cmdParameters)
 {
-    assert(!"Doesn't work");
+    auto intrin = get_frame_intrin();
+    auto& param = cmdParameters.parameters;
+    param.tracker.focalLengthX = intrin.focalLengthX;
+    param.tracker.focalLengthY = intrin.focalLengthY;
+    param.tracker.principalPointX = intrin.principalPointX;
+    param.tracker.principalPointY = intrin.principalPointY;
+    // Distortion coeffs
 }
 
-bool InputImu::getParametersAvailable() const
+double InputImu::get_fps() const
 {
-
-    assert(!"Doesn't work");
+    return FPS;
 }
 
-std::map<api::PoseHistory, std::vector<api::Pose>> InputImu::getPoseHistories()
+void InputImu::get_resolution(int& width, int& height) const
 {
-
-    assert(!"Doesn't work");
+    auto intrin = m_pipeline.get_active_profile().get_stream(RS2_STREAM_COLOR).as<rs2::video_stream_profile>().get_intrinsics();
+    width = intrin.width;
+    height = intrin.height;
 }
 
-std::string InputImu::getLastJSONL() const
+CameraParameters InputImu::get_frame_intrin() const
 {
-
-    assert(!"Doesn't work");
-}
-
-bool InputImu::canEcho() const
-{
-    return false;
+    auto intrin = m_pipeline.get_active_profile().get_stream(RS2_STREAM_COLOR).as<rs2::video_stream_profile>().get_intrinsics();
+    if (intrin.model != RS2_DISTORTION_NONE)
+        assert(!"Cannot handle distortion model that is not none");
+    return {
+        .focalLengthX = intrin.fx,
+        .focalLengthY = intrin.fy,
+        .principalPointX = intrin.ppx,
+        .principalPointY = intrin.ppy
+    };
 }

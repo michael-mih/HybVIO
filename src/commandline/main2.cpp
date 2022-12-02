@@ -44,16 +44,14 @@ using PoseHistoryMap = std::map<api::PoseHistory, std::vector<api::Pose>>;
 
 class Visualizer {
 public:
-    Visualizer(const cmd::Parameters& parameters, bool hasMapViewer,
-        bool hasVuViewer)
+    Visualizer(const cmd::Parameters& parameters, bool hasMapViewer, bool hasVuViewer)
         :
 #ifdef BUILD_VISUALIZATIONS
     #ifdef USE_SLAM
         mapViewer(parameters, commands)
         ,
     #endif
-        vuViewer(
-            odometry::viewer::VisualUpdateViewer::create(parameters, commands))
+        vuViewer(odometry::viewer::VisualUpdateViewer::create(parameters, commands))
         ,
 #endif
         hasMapViewer(hasMapViewer)
@@ -268,155 +266,66 @@ struct VideoConfig {
     int frameSub = 1;
     double displayScale = 1.0;
     double algorithmScale = 1.0;
-    std::map<int, std::unique_ptr<VideoInput>> videoInputs;
 };
 
-std::vector<int> getCameraInds(const CommandLineParameters& cmd)
-{
-    if (cmd.parameters.tracker.useStereo) {
-        assert(cmd.parameters.tracker.leftCameraId < 2);
-        assert(cmd.parameters.tracker.rightCameraId < 2);
-        return { cmd.parameters.tracker.leftCameraId,
-            cmd.parameters.tracker.rightCameraId };
-    } else {
-        return { 0 };
-    }
-}
-
-InputImu setupInputAndOutput(CommandLineParameters& cmd, VideoConfig& videoConfig, std::string& outputPath, int argc, char* argv[])
+InputImu setupInputAndOutput(CommandLineParameters& cmd, VideoConfig& videoConfig, int argc, char* argv[])
 {
     const cmd::ParametersMain& main = cmd.cmd.main;
-    int datasetVideoIndex = main.datasetVideoIndex;
-
-    if (main.inputPath == "" && datasetVideoIndex <= 0) {
-        log_error("No input specified.");
-        return 0;
-    }
 
     int inputWidth, inputHeight;
 
-    std::string inputPath = main.inputPath;
-    if (datasetVideoIndex > 0) {
-        // ADVIO data.
-        std::ostringstream oss;
-        oss << "../data/benchmark/advio-" << std::setw(2) << std::setfill('0')
-            << datasetVideoIndex;
-        inputPath = oss.str();
-
-        log_debug("ADVIO %d: shorthand for -i=%s", datasetVideoIndex,
-            inputPath.c_str());
-    }
-
     InputImu input;
-
     input.set_parameters(cmd);
-
-    // … read calibration file if it exists, overwriting values from data.jsonl
-    // and parameters.txt …
-    std::string calibrationPath = !main.calibrationPath.empty()
-        ? main.calibrationPath
-        : util::joinUnixPath(inputPath, "calibration.json");
-    std::ifstream calibrationFile(calibrationPath);
-    if (calibrationFile.is_open()) {
-        if (!parametersString.empty()) {
-            log_warn("Using both parameters.txt and calibration.json. Values from "
-                     "latter override the former.");
-        }
-        log_debug("Using calibration from:");
-        log_debug("  %s", calibrationPath.c_str());
-        cmd.parse_calibration_json(calibrationFile);
-    } else if (!main.calibrationPath.empty()) {
-        log_error("File %s could not be opened.", main.calibrationPath.c_str());
-        assert(false);
-    }
 
     // parse again to allow overriding automatically set parameters.
     cmd.parse_argv(argc, argv);
 
-    if (main.outputPath != "") {
-        outputPath = main.outputPath;
-        log_debug("output path overridden as %s", outputPath.c_str());
+    auto fps = input.get_fps();
+
+    videoConfig.frameSub = static_cast<int>(round(fps / cmd.parameters.tracker.targetFps));
+    if (videoConfig.frameSub <= 0)
+        videoConfig.frameSub = 1;
+    log_debug("The framerate is %.1f/%d = %.1f fps.", fps, videoConfig.frameSub, fps / static_cast<double>(videoConfig.frameSub));
+
+    input.get_resolution(inputWidth, inputHeight);
+
+    // Scale of image to feed odometry (tracker). Upsample only explicitly.
+    if (main.targetFrameWidthUpsample > 0) {
+        videoConfig.algorithmScale = double(main.targetFrameWidthUpsample) / inputWidth;
+        if (videoConfig.algorithmScale > 1.0)
+            log_warn("Upsampling algorithm frame input.");
+    } else {
+        videoConfig.algorithmScale = std::min(double(main.targetFrameWidth) / inputWidth, 1.0);
     }
+    // Use a dummy resize to predict resized frame dimensions because
+    // neither round() nor floor() produce correct results for very small
+    // scales.
+    cv::Mat resizeTest(inputHeight, inputWidth, CV_8UC1);
+    cv::resize(resizeTest, resizeTest, cv::Size(), videoConfig.algorithmScale, videoConfig.algorithmScale, cv::INTER_CUBIC);
+    videoConfig.algorithmWidth = resizeTest.cols;
+    videoConfig.algorithmHeight = resizeTest.rows;
 
-    // Setup video inputs.
-    for (int cameraInd : getCameraInds(cmd)) {
-        std::string videoPath = input.getInputVideoPath(cameraInd);
-        videoConfig.videoInputs[cameraInd] = VideoInput::build(
-            videoPath, cmd.parameters.tracker.convertVideoToGray,
-            cmd.parameters.tracker.videoReaderThreads,
-            cmd.parameters.tracker.ffmpeg, cmd.parameters.tracker.vf);
+    // Size of image to display on screen.
+    double displayLongerSide = main.windowResolution;
+    const int algoLongerSide = std::max(videoConfig.algorithmWidth, videoConfig.algorithmHeight);
+    if (displayLongerSide <= 0)
+        displayLongerSide = algoLongerSide;
+
+    videoConfig.inputWidth = inputWidth;
+    videoConfig.inputHeight = inputHeight;
+
+    // To avoid hassle of scaling pixel coordinates of drawn tracks etc, for
+    // display window, scale the already scaled algorithm input image.
+    videoConfig.displayScale = displayLongerSide / algoLongerSide;
+
+    if (videoConfig.algorithmScale != 1.0) {
+        assert(!"Should resize to algorithm{Width,Height}");
     }
-
-    if (videoConfig.videoInputs.at(0)) {
-        double fps = videoConfig.videoInputs.at(0)->probeFPS();
-        assert(fps > 0.0);
-
-        videoConfig.frameSub = static_cast<int>(round(fps / cmd.parameters.tracker.targetFps));
-        if (videoConfig.frameSub <= 0)
-            videoConfig.frameSub = 1;
-        log_debug("The framerate is %.1f/%d = %.1f fps.", fps, videoConfig.frameSub,
-            fps / static_cast<double>(videoConfig.frameSub));
-
-        videoConfig.videoInputs.at(0)->probeResolution(inputWidth, inputHeight);
-        if (cmd.parameters.tracker.focalLength < 0 && datasetVideoIndex > 0) {
-            // Otherwise need to scale the given focal length values.
-            assert(inputWidth == 1280 && inputHeight == 720);
-        }
-
-        // Scale of image to feed odometry (tracker). Upsample only explicitly.
-        if (main.targetFrameWidthUpsample > 0) {
-            videoConfig.algorithmScale = double(main.targetFrameWidthUpsample) / inputWidth;
-            if (videoConfig.algorithmScale > 1.0)
-                log_warn("Upsampling algorithm frame input.");
-        } else {
-            videoConfig.algorithmScale = std::min(double(main.targetFrameWidth) / inputWidth, 1.0);
-        }
-        // Use a dummy resize to predict resized frame dimensions because
-        // neither round() nor floor() produce correct results for very small
-        // scales.
-        cv::Mat resizeTest(inputHeight, inputWidth, CV_8UC1);
-        cv::resize(resizeTest, resizeTest, cv::Size(), videoConfig.algorithmScale,
-            videoConfig.algorithmScale, cv::INTER_CUBIC);
-        videoConfig.algorithmWidth = resizeTest.cols;
-        videoConfig.algorithmHeight = resizeTest.rows;
-
-        // Size of image to display on screen.
-        double displayLongerSide = main.windowResolution;
-        const int algoLongerSide = std::max(videoConfig.algorithmWidth, videoConfig.algorithmHeight);
-        if (displayLongerSide <= 0)
-            displayLongerSide = algoLongerSide;
-
-        videoConfig.inputWidth = inputWidth;
-        videoConfig.inputHeight = inputHeight;
-
-        // To avoid hassle of scaling pixel coordinates of drawn tracks etc, for
-        // display window, scale the already scaled algorithm input image.
-        videoConfig.displayScale = displayLongerSide / algoLongerSide;
-    } else if (cmd.parameters.odometry.visualUpdateEnabled) {
-        std::cerr << "Video is required if running without -vu=false" << std::endl;
-        return nullptr;
-    }
-
-    if (videoConfig.algorithmScale != 1.0)
-        for (auto& it : videoConfig.videoInputs) {
-            it.second->resize(videoConfig.algorithmWidth,
-                videoConfig.algorithmHeight);
-        }
 
     return input;
 }
 
-void writePointCloudToCsv(double t,
-    const std::vector<api::FeaturePoint>& pointCloud,
-    std::ostream& out)
-{
-    for (const auto& p : pointCloud) {
-        out << t << "," << p.id << "," << p.position.x << "," << p.position.y << ","
-            << p.position.z << std::endl;
-    }
 }
-
-} // namespace
 
 int run_algorithm(int argc, char* argv[], Visualizer& visualizer, CommandLineParameters& cmd)
 {
@@ -434,10 +343,9 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer, CommandLinePar
     }
 
     VideoConfig videoConfig;
-    std::string outputPath;
-    std::unique_ptr<std::ofstream> pointCloudOutput;
 
-    auto input = setupInputAndOutput(cmd, videoConfig, outputPath, argc, argv);
+    auto input = setupInputAndOutput(cmd, videoConfig, argc, argv);
+    auto frame_intrinsic = input.get_frame_intrin();
 
     api::InternalAPI::DebugParameters debugParameters;
     debugParameters.recordingPath = main.recordingPath;
@@ -530,49 +438,25 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer, CommandLinePar
     api->connectDebugApi(odometryDebug);
 #endif
 
-    std::string pointCloudOutputPath = main.pointCloudOutputPath;
-    if (!pointCloudOutputPath.empty()) {
-        pointCloudOutput = std::make_unique<std::ofstream>(pointCloudOutputPath.c_str());
-        if (!*pointCloudOutput) {
-            std::cerr << "Unable to open point cloud output file "
-                      << pointCloudOutputPath << std::endl;
-            return 1;
-        }
-    }
-
-    std::ofstream outputFile;
-    if (outputPath != "") {
-        outputFile.open(outputPath);
-    }
-
-    PoseHistoryMap poseHistories = input.getPoseHistories();
-    for (auto it = poseHistories.begin(); it != poseHistories.end(); ++it) {
-        // TODO: move to new api
-        api->setPoseHistory(it->first, it->second);
-    }
+    // PoseHistoryMap poseHistories = input.getPoseHistories();
+    // for (auto it = poseHistories.begin(); it != poseHistories.end(); ++it) {
+    //     // TODO: move to new api
+    //     api->setPoseHistory(it->first, it->second);
+    // }
 
 #ifdef BUILD_VISUALIZATIONS
     // Duplication from automaticCameraParametersWhereUnset().
     cmd.parameters.imuToCamera = odometry::util::vec2matrix(cmd.parameters.odometry.imuToCameraMatrix);
     if (cmd.parameters.odometry.secondImuToCameraMatrix.size() > 1) {
-        cmd.parameters.secondImuToCamera = odometry::util::vec2matrix(
-            cmd.parameters.odometry.secondImuToCameraMatrix);
+        cmd.parameters.secondImuToCamera = odometry::util::vec2matrix(cmd.parameters.odometry.secondImuToCameraMatrix);
     } else {
         cmd.parameters.secondImuToCamera = cmd.parameters.imuToCamera;
     }
-    visualizer.setFixedData(poseHistories, cmd.parameters.imuToCamera,
-        cmd.parameters.secondImuToCamera);
+    // visualizer.setFixedData(poseHistories, cmd.parameters.imuToCamera, cmd.parameters.secondImuToCamera);
 #endif
 
     api->onOutput = [&](std::shared_ptr<const api::VioApi::VioOutput> output) {
-        outputBuffer.addProcessedFrame(output);
-        if (outputFile) {
-            std::string outputJson = api::outputToJson(*output, main.outputType == "tail");
-            outputFile << outputJson << std::endl;
-        }
-        if (pointCloudOutput) {
-            writePointCloudToCsv(output->pose.time, output->pointCloud, *pointCloudOutput);
-        }
+        outputBuffer.addProcessedFrame(std::move(output));
     };
 
     int rotation = cmd.parameters.odometry.rot;
@@ -656,21 +540,21 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer, CommandLinePar
             auto video = frame.as<rs2::video_frame>();
             auto t = video.get_timestamp();
 
+            // If resized, then sizes are not equal
+            assert(video.get_width() == videoConfig.inputWidth && video.get_height() == videoConfig.inputHeight);
             assert(video.get_data_size() == video.get_width() * video.get_height() * video.get_bytes_per_pixel());
-            // Lifetime of frame data?
-            cv::Mat input_frame { HEIGHT, WIDTH, CV_8UC3, video.get_data() };
 
-            int framesInd;
-            input.getFrames(t, framesInd, frames);
-            assert(frames.size() >= (useStereo ? 2 : 1));
+            // Lifetime of frame data?
+            cv::Mat input_frame { video.get_height(), video.get_width(), CV_8UC3, video.get_data() };
 
             // Check frame indices are consecutive?
 
-            // if (videoConfig.algorithmScale != 1.0) {
-            //     odometry::InputFrame& meta = frames.at(cameraInd);
-            //     meta.intrinsic.focalLengthX *= videoConfig.algorithmScale;
-            //     meta.intrinsic.focalLengthY *= videoConfig.algorithmScale;
-            // }
+            if (videoConfig.algorithmScale != 1.0) {
+                assert(!"Cannot handle scale that is not 1");
+                // odometry::InputFrame& meta = frames.at(cameraInd);
+                // meta.intrinsic.focalLengthX *= videoConfig.algorithmScale;
+                // meta.intrinsic.focalLengthY *= videoConfig.algorithmScale;
+            }
 
             if (cmd.parameters.verbosity >= odometry::Parameters::VERBOSITY_DEBUG && apiOutput) {
                 // TODO: Relies on internal API
@@ -742,14 +626,14 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer, CommandLinePar
             visualizer.processMaybeOnGpu([&] {
                           if (firstImage.storageType == accelerated::Image::StorageType::CPU) {
                               api->addFrameMonoVarying(
-                                  t, intrinsic, firstImage.width,
+                                  t, frame_intrinsic, firstImage.width,
                                   firstImage.height,
                                   accelerated::cpu::Image::castFrom(firstImage).getDataRaw(),
                                   colorFormat, 0);
                           } else {
 #ifdef DAZZLING_GPU_ENABLED
                               api->addFrameMonoOpenGl(
-                                  t, intrinsic, firstImage.width,
+                                  t, frame_intrinsic, firstImage.width,
                                   firstImage.height,
                                   accelerated::opengl::Image::castFrom(firstImage).getTextureId(),
                                   colorFormat, 0);
@@ -882,9 +766,6 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer, CommandLinePar
             break;
     }
 
-    frameVisualizationImage.reset();
-    apiOutput.reset();
-
     if (!main.skipOpenGlCleanup) {
         visualizer.processMaybeOnGpu([&] {
                       log_debug("api->cleanupOpenGl()");
@@ -935,30 +816,14 @@ int main(int argc, char* argv[])
 
     const bool anyVisualizations = cmd.cmd.main.displayPose || cmd.cmd.main.visualUpdateViewer || cmd.cmd.main.displayVideo || cmd.cmd.main.displayCorrelation || cmd.cmd.main.displayCovarianceMagnitude || cmd.cmd.main.displayImuSamples || cmd.cmd.main.displayStereoMatching || cmd.cmd.slam.displayViewer || cmd.cmd.slam.displayKeyframe || cmd.cmd.slam.visualizeMapPointSearch || cmd.cmd.slam.visualizeOrbMatching || cmd.cmd.slam.visualizeLoopOrbMatching;
 
-#ifdef __APPLE__
-    const bool visuInMainThread = anyVisualizations;
-    const bool needVisualProcessing = anyVisualizations;
-    if (anyVisualizations && cmd.cmd.main.gpu) {
-        assert(false && "Visualization aren't supported on Mac with -gpu flag");
-    }
-#else
-    constexpr bool visuInMainThread = false;
     const bool needVisualProcessing = anyVisualizations || cmd.cmd.main.gpu;
-#endif
 
     const bool mapViewer = cmd.parameters.slam.useSlam && cmd.cmd.slam.displayViewer;
     const bool vuViewer = cmd.cmd.main.visualUpdateViewer;
     Visualizer visualizer(cmd.cmd, mapViewer, vuViewer);
-    auto ret = visuInMainThread ? std::async(run_algorithm, argc, argv,
-                   std::ref(visualizer), std::ref(cmd))
-                                : std::async(run_visualizer, needVisualProcessing,
-                                    std::ref(visualizer));
+    auto ret = std::async(run_visualizer, needVisualProcessing, std::ref(visualizer));
 
-    if (visuInMainThread) {
-        run_visualizer(needVisualProcessing, visualizer);
-    } else {
-        run_algorithm(argc, argv, visualizer, cmd);
-    }
+    run_algorithm(argc, argv, visualizer, cmd);
 
     log_debug("waiting for ret.get() at the end of main");
     return ret.get();

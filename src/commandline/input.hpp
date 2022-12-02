@@ -21,7 +21,6 @@ public:
     ~InputImu();
 
     std::pair<InputType, rs2::frame> next_frame();
-    std::string getInputVideoPath(int cameraInd) const;
 
     /**
      * Read algorithm parameters.
@@ -35,6 +34,10 @@ public:
      * True for JSONL input, false otherwise.
      */
     bool canEcho() const;
+
+    double get_fps() const;
+    void get_resolution(int& width, int& height) const;
+    CameraParameters get_frame_intrin() const;
 
 private:
     rs2::pipeline m_pipeline;
