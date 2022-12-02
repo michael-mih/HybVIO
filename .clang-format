@@ -11,4 +11,5 @@ BreakBeforeBraces: Custom
 BraceWrapping:
     AfterFunction: true
 NamespaceIndentation: None
-QualifierAlignment: Right
+AlignConsecutiveMacros: Consecutive
+QualifierAlignment: Left

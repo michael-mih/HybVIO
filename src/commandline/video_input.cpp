@@ -32,7 +32,7 @@ private:
     util::BoundedInputQueue<cv::Mat> queue;
 
 public:
-    VideoInputImplementation(std::string const& videoPath, std::unique_ptr<Reader> reader, bool ownThread, bool convertToGray)
+    VideoInputImplementation(const std::string& videoPath, std::unique_ptr<Reader> reader, bool ownThread, bool convertToGray)
         : videoPath(videoPath)
         , reader(std::move(reader))
         , queue(ownThread ? BUFFER_SIZE : 0, [this, convertToGray](cv::Mat& frame) -> bool {
@@ -95,7 +95,7 @@ struct FFMpegReader : Reader {
     int height = 0;
     FILE* pipe = nullptr;
 
-    FFMpegReader(std::string const& videoPath, const std::string vf)
+    FFMpegReader(const std::string& videoPath, const std::string vf)
     {
         bool success = videoutil::ffprobeResolution(videoPath, width, height);
         if (success) {
@@ -151,7 +151,7 @@ struct FFMpegReader : Reader {
 struct OpenCVReader : Reader {
     cv::VideoCapture videoCapture;
 
-    OpenCVReader(std::string const& videoPath)
+    OpenCVReader(const std::string& videoPath)
     {
         videoCapture = cv::VideoCapture(videoPath);
     }
@@ -167,18 +167,14 @@ struct OpenCVReader : Reader {
     }
 };
 
-extern rs2::frame g_last_video_frame;
-
-class RSReader : Reader {
-};
 }
 
 std::unique_ptr<VideoInput> VideoInput::build(
-    std::string const& fileName,
-    bool const convertVideoToGray,
-    bool const videoReaderThreads,
-    bool const ffmpeg,
-    std::string const& vf)
+    const std::string& fileName,
+    const bool convertVideoToGray,
+    const bool videoReaderThreads,
+    const bool ffmpeg,
+    const std::string& vf)
 {
     auto reader = ffmpeg
         ? std::unique_ptr<Reader>(new FFMpegReader(fileName, vf))

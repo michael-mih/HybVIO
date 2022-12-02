@@ -44,7 +44,7 @@ using PoseHistoryMap = std::map<api::PoseHistory, std::vector<api::Pose>>;
 
 class Visualizer {
 public:
-    Visualizer(cmd::Parameters const& parameters, bool hasMapViewer,
+    Visualizer(const cmd::Parameters& parameters, bool hasMapViewer,
         bool hasVuViewer)
         :
 #ifdef BUILD_VISUALIZATIONS
@@ -94,7 +94,7 @@ public:
         }
     }
 
-    void addVisualizationMat(std::string const& title, cv::Mat const& frame)
+    void addVisualizationMat(const std::string& title, const cv::Mat& frame)
     {
         std::lock_guard<std::mutex> lock(mutex);
         if (visualizations.find(title) == visualizations.end()) {
@@ -110,11 +110,11 @@ public:
         if (shouldQuit)
             return false;
 #if defined(BUILD_VISUALIZATIONS) && defined(USE_SLAM)
-        for (auto const& v : mapViewer.get_data_publisher().pollVisualizations()) {
+        for (const auto& v : mapViewer.get_data_publisher().pollVisualizations()) {
             visualizations[v.first] = v.second;
         }
 #endif
-        for (auto const& v : visualizations) {
+        for (const auto& v : visualizations) {
             assert(!v.second.empty());
             cv::imshow(v.first, v.second);
         }
@@ -158,7 +158,7 @@ public:
 
     CommandQueue& getCommands() { return commands; }
 
-    accelerated::Future processMaybeOnGpu(std::function<void()> const& op)
+    accelerated::Future processMaybeOnGpu(const std::function<void()>& op)
     {
         assert(visualProcessor);
         return visualProcessor->enqueue(op);
@@ -185,9 +185,9 @@ public:
             vuViewer->setup();
     }
 
-    void setFixedData(PoseHistoryMap const& poseHistories,
-        Eigen::Matrix4d const& imuToCamera,
-        Eigen::Matrix4d const& secondImuToCamera)
+    void setFixedData(const PoseHistoryMap& poseHistories,
+        const Eigen::Matrix4d& imuToCamera,
+        const Eigen::Matrix4d& secondImuToCamera)
     {
         std::lock_guard<std::mutex> lock(mutex);
         if (hasVuViewer)
@@ -230,8 +230,8 @@ public:
     }
 
 private:
-    bool const hasMapViewer;
-    bool const hasVuViewer;
+    const bool hasMapViewer;
+    const bool hasVuViewer;
     CommandQueue commands;
     std::mutex mutex;
     std::map<std::string, cv::Mat> visualizations;
@@ -271,7 +271,7 @@ struct VideoConfig {
     std::map<int, std::unique_ptr<VideoInput>> videoInputs;
 };
 
-std::vector<int> getCameraInds(CommandLineParameters const& cmd)
+std::vector<int> getCameraInds(const CommandLineParameters& cmd)
 {
     if (cmd.parameters.tracker.useStereo) {
         assert(cmd.parameters.tracker.leftCameraId < 2);
@@ -283,11 +283,9 @@ std::vector<int> getCameraInds(CommandLineParameters const& cmd)
     }
 }
 
-std::unique_ptr<odometry::InputI>
-setupInputAndOutput(CommandLineParameters& cmd, VideoConfig& videoConfig,
-    std::string& outputPath, int argc, char* argv[])
+InputImu setupInputAndOutput(CommandLineParameters& cmd, VideoConfig& videoConfig, std::string& outputPath, int argc, char* argv[])
 {
-    cmd::ParametersMain const& main = cmd.cmd.main;
+    const cmd::ParametersMain& main = cmd.cmd.main;
     int datasetVideoIndex = main.datasetVideoIndex;
 
     if (main.inputPath == "" && datasetVideoIndex <= 0) {
@@ -309,30 +307,9 @@ setupInputAndOutput(CommandLineParameters& cmd, VideoConfig& videoConfig,
             inputPath.c_str());
     }
 
-    // std::unique_ptr<odometry::InputI> input;
-    auto input = odometry::buildInputImu();
+    InputImu input;
 
-    // if (odometry::pathHasFile(inputPath, "data.jsonl")) {
-    //     input = odometry::buildInputJSONL(inputPath, true, main.parametersPath);
-    // } else if (odometry::pathHasFile(inputPath, "data.csv")) {
-    //     input = odometry::buildInputCSV(inputPath);
-    // } else {
-    //     log_warn("No data.{jsonl,csv} file found. Does %s/ exist?",
-    //         inputPath.c_str());
-    //     return nullptr;
-    // }
-
-    // Read camera parameters and such from `data.jsonl` and …
-    input->setAlgorithmParametersFromData(cmd.parameters);
-
-    // … then set `parameters.txt`, allowing to overwrite any `data.jsonl`
-    // parameters.
-    std::string parametersString = input->getParametersString();
-    if (!parametersString.empty()) {
-        log_debug("Setting parameters from:");
-        log_debug("  %s", parametersString.c_str());
-    }
-    input->setParameters(cmd);
+    input.set_parameters(cmd);
 
     // … read calibration file if it exists, overwriting values from data.jsonl
     // and parameters.txt …
@@ -363,7 +340,7 @@ setupInputAndOutput(CommandLineParameters& cmd, VideoConfig& videoConfig,
 
     // Setup video inputs.
     for (int cameraInd : getCameraInds(cmd)) {
-        std::string videoPath = input->getInputVideoPath(cameraInd);
+        std::string videoPath = input.getInputVideoPath(cameraInd);
         videoConfig.videoInputs[cameraInd] = VideoInput::build(
             videoPath, cmd.parameters.tracker.convertVideoToGray,
             cmd.parameters.tracker.videoReaderThreads,
@@ -405,7 +382,7 @@ setupInputAndOutput(CommandLineParameters& cmd, VideoConfig& videoConfig,
 
         // Size of image to display on screen.
         double displayLongerSide = main.windowResolution;
-        int const algoLongerSide = std::max(videoConfig.algorithmWidth, videoConfig.algorithmHeight);
+        const int algoLongerSide = std::max(videoConfig.algorithmWidth, videoConfig.algorithmHeight);
         if (displayLongerSide <= 0)
             displayLongerSide = algoLongerSide;
 
@@ -430,10 +407,10 @@ setupInputAndOutput(CommandLineParameters& cmd, VideoConfig& videoConfig,
 }
 
 void writePointCloudToCsv(double t,
-    std::vector<api::FeaturePoint> const& pointCloud,
+    const std::vector<api::FeaturePoint>& pointCloud,
     std::ostream& out)
 {
-    for (auto const& p : pointCloud) {
+    for (const auto& p : pointCloud) {
         out << t << "," << p.id << "," << p.position.x << "," << p.position.y << ","
             << p.position.z << std::endl;
     }
@@ -441,10 +418,9 @@ void writePointCloudToCsv(double t,
 
 } // namespace
 
-int run_algorithm(int argc, char* argv[], Visualizer& visualizer,
-    CommandLineParameters& cmd)
+int run_algorithm(int argc, char* argv[], Visualizer& visualizer, CommandLineParameters& cmd)
 {
-    cmd::ParametersMain const& main = cmd.cmd.main;
+    const cmd::ParametersMain& main = cmd.cmd.main;
     if (main.logLevel >= odometry::Parameters::VERBOSITY_DEBUG)
         cmd.parameters.verbosity = odometry::Parameters::VERBOSITY_DEBUG;
     if (main.logLevel >= odometry::Parameters::VERBOSITY_EXTRA)
@@ -459,13 +435,9 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer,
 
     VideoConfig videoConfig;
     std::string outputPath;
-    std::unique_ptr<std::ofstream> pointCloudOutput; // use unique_ptr to auto-close
+    std::unique_ptr<std::ofstream> pointCloudOutput;
 
     auto input = setupInputAndOutput(cmd, videoConfig, outputPath, argc, argv);
-    if (!input) {
-        visualizer.terminate();
-        return 1;
-    }
 
     api::InternalAPI::DebugParameters debugParameters;
     debugParameters.recordingPath = main.recordingPath;
@@ -485,11 +457,10 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer,
         debugParameters.visualization = api::InternalAPI::VisualizationMode::TRACKS_ALL;
     } else if (main.displayOpticalFlow != odometry::OpticalFlowVisualization::NONE) {
         debugParameters.api.parameters.tracker.saveOpticalFlow = main.displayOpticalFlow;
-        if (main.displayOpticalFlow == odometry::OpticalFlowVisualization::FAILURES) {
+        if (main.displayOpticalFlow == odometry::OpticalFlowVisualization::FAILURES)
             debugParameters.visualization = api::InternalAPI::VisualizationMode::OPTICAL_FLOW_FAILURES;
-        } else {
+        else
             debugParameters.visualization = api::InternalAPI::VisualizationMode::OPTICAL_FLOW;
-        }
     } else if (main.displayStereoMatching) {
         debugParameters.visualization = api::InternalAPI::VisualizationMode::STEREO_MATCHING;
     } else if (main.displayCornerMeasure) {
@@ -509,14 +480,13 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer,
         visualizer.getCommands().keyboardInput('a'); // TODO. hacky
     }
 
-    std::shared_ptr<api::InternalAPI> apiPtr = api::buildVio(debugParameters);
-    auto& api = *apiPtr;
+    auto api = api::buildVio(debugParameters);
 
     api::OutputBuffer outputBuffer;
     outputBuffer.targetDelaySeconds = debugParameters.api.parameters.odometry.targetOutputDelaySeconds;
 
     {
-        auto const& pt = cmd.parameters.tracker;
+        const auto& pt = cmd.parameters.tracker;
         log_debug("Focal length: %g, %g, PP: %g, %g, Input size: %dx%d, Algorithm "
                   "frame size: %d, scale %.2f",
             pt.focalLengthX, pt.focalLengthY, pt.principalPointX,
@@ -530,20 +500,17 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer,
         }
     }
 
-    ImuVisualization gyroVisu(5.0), accVisu(30.0), uncertaintyVisuPos(.02),
-        uncertaintyVisuRot(.2);
+    ImuVisualization gyroVisu(5.0), accVisu(30.0), uncertaintyVisuPos(.02), uncertaintyVisuRot(.2);
 #ifdef BUILD_VISUALIZATIONS
     std::vector<slam::MapPointRecord> pointCloud;
     odometry::DebugAPI odometryDebug;
-    odometryDebug.endDebugCallback =
-        [&pointCloud](
-            std::map<int, slam::MapPointRecord> const& pointCloudExtend) {
-            // Convert to vector because we don't need the track ids.
-            pointCloud.reserve(pointCloud.size() + pointCloudExtend.size());
-            for (const auto& it : pointCloudExtend) {
-                pointCloud.push_back(it.second);
-            }
-        };
+    odometryDebug.endDebugCallback = [&pointCloud](const std::map<int, slam::MapPointRecord>& pointCloudExtend) {
+        // Convert to vector because we don't need the track ids.
+        pointCloud.reserve(pointCloud.size() + pointCloudExtend.size());
+        for (const auto& it : pointCloudExtend) {
+            pointCloud.push_back(it.second);
+        }
+    };
 
     if (main.visualUpdateViewer) {
         odometryDebug.publisher = &visualizer.vuViewer->getPublisher();
@@ -554,16 +521,13 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer,
         odometryDebug.slamDebug->dataPublisher = &visualizer.mapViewer.get_data_publisher();
         odometryDebug.slamDebug->commandQueue = &visualizer.getCommands();
         odometryDebug.slamDebug->mapSavePath = main.slamMapPosesPath;
-        odometryDebug.slamDebug->endDebugCallback =
-            [&pointCloud](
-                std::vector<slam::MapPointRecord> const& pointCloudExtend) {
-                pointCloud.reserve(pointCloud.size() + pointCloudExtend.size());
-                pointCloud.insert(pointCloud.end(), pointCloudExtend.begin(),
-                    pointCloudExtend.end());
-            };
+        odometryDebug.slamDebug->endDebugCallback = [&pointCloud](const std::vector<slam::MapPointRecord>& pointCloudExtend) {
+            pointCloud.reserve(pointCloud.size() + pointCloudExtend.size());
+            pointCloud.insert(pointCloud.end(), pointCloudExtend.begin(), pointCloudExtend.end());
+        };
     }
     #endif
-    apiPtr->connectDebugApi(odometryDebug);
+    api->connectDebugApi(odometryDebug);
 #endif
 
     std::string pointCloudOutputPath = main.pointCloudOutputPath;
@@ -581,10 +545,10 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer,
         outputFile.open(outputPath);
     }
 
-    PoseHistoryMap poseHistories = input->getPoseHistories();
+    PoseHistoryMap poseHistories = input.getPoseHistories();
     for (auto it = poseHistories.begin(); it != poseHistories.end(); ++it) {
         // TODO: move to new api
-        apiPtr->setPoseHistory(it->first, it->second);
+        api->setPoseHistory(it->first, it->second);
     }
 
 #ifdef BUILD_VISUALIZATIONS
@@ -600,15 +564,14 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer,
         cmd.parameters.secondImuToCamera);
 #endif
 
-    api.onOutput = [&](std::shared_ptr<const api::VioApi::VioOutput> output) {
+    api->onOutput = [&](std::shared_ptr<const api::VioApi::VioOutput> output) {
         outputBuffer.addProcessedFrame(output);
         if (outputFile) {
             std::string outputJson = api::outputToJson(*output, main.outputType == "tail");
             outputFile << outputJson << std::endl;
         }
         if (pointCloudOutput) {
-            writePointCloudToCsv(output->pose.time, output->pointCloud,
-                *pointCloudOutput);
+            writePointCloudToCsv(output->pose.time, output->pointCloud, *pointCloudOutput);
         }
     };
 
@@ -618,43 +581,31 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer,
     }
     visualizer.setFrameRotation(rotation);
 
-    double const CAMERA_PAUSE_LENGTH_SECONDS = 1.0;
-    bool cameraPaused = false;
-    double cameraPauseStartTime = -1.0;
     double lastVisuTime = 0.0;
     bool firstFrame = true;
     bool shouldQuit = false;
-    int processedFrames = 0, outputCounter = 0;
+    int outputCounter = 0;
     int lastFramesInd = 0;
-    int maxFrames = main.maxFrames;
     bool useStereo = cmd.parameters.tracker.useStereo;
     std::shared_ptr<const api::VioApi::VioOutput> apiOutput = nullptr;
 
     std::shared_ptr<accelerated::Image> frameVisualizationImage;
     std::shared_ptr<api::Visualization> visualizationVideo;
     if (main.displayVideo)
-        visualizationVideo = apiPtr->createVisualization("VIDEO");
+        visualizationVideo = api->createVisualization("VIDEO");
     std::shared_ptr<api::Visualization> visualizationKfCorrelation;
     std::shared_ptr<api::Visualization> visualizationPose;
     std::shared_ptr<api::Visualization> visualizationCovarianceMagnitude;
-    std::map<int, std::shared_ptr<cv::Mat>> inputFrames;
-    cv::Mat cpuVisuFrame, resizedColorFrame, rotatedColorFrame, corrFrame,
-        poseFrame, magnitudeFrame;
-    cv::Mat prevGrayFrame;
+    cv::Mat cpuVisuFrame, resizedColorFrame, rotatedColorFrame, corrFrame, poseFrame, magnitudeFrame, prevGrayFrame;
     FpsMeter fpsMeter;
-
-    api::CameraParameters lastIntrinsic[2];
-    std::vector<odometry::InputFrame> frames;
-    std::vector<int> cameraInds = getCameraInds(cmd);
 
 #ifdef DAZZLING_GPU_ENABLED
     std::unique_ptr<accelerated::Image::Factory> gpuImageFactory;
-    std::array<std::shared_ptr<accelerated::Image>, 2> gpuInputImages;
+    std::unique_ptr<accelerated::Image> gpuInputImage;
 #endif
 
     // only needed in certain experimental combinations with pyrLKUseGpu
-    api.onOpenGlWork = [&visualizer, &apiPtr] {
-        std::weak_ptr<api::InternalAPI> apiWeak = apiPtr;
+    api->onOpenGlWork = [&visualizer, apiWeak = std::weak_ptr { api }] {
         visualizer.processMaybeOnGpu([apiWeak] {
             if (auto api = apiWeak.lock()) {
                 api->processOpenGl();
@@ -662,32 +613,21 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer,
         });
     };
 
-    while (true) {
-        odometry::InputSample inputType = input->nextType();
-        if (inputType == odometry::InputSample::NONE)
-            break;
+    for (;;) {
+        auto [type, frame] = input.next_frame();
 
         bool shouldVisualize = false;
         constexpr double INS_ONLY_VISU_INTERVAL = 0.1; // seconds
         bool didOutput = false;
-        cv::Mat extraFrame;
 
-        switch (inputType) {
-        case odometry::InputSample::NONE: {
-            break;
-        }
-        case odometry::InputSample::ECHO_RECORDING: {
-            // Copy lines between the recordings that are not passed to the odometry
-            // API.
-            apiPtr->addAuxiliaryJsonData(input->getLastJSONL());
-            break;
-        }
-        case odometry::InputSample::GYROSCOPE: {
+        switch (type) {
+        case InputType::Gyroscope: {
             timer(mainTimeStats, "gyroscope");
-            double t;
-            api::Vector3d p;
-            input->getGyroscope(t, p);
-            api.addGyro(t, { p.x, p.y, p.z });
+            auto motion = frame.as<rs2::motion_frame>();
+            auto t = motion.get_timestamp();
+            auto motion_data = motion.get_motion_data();
+            api::Vector3d p { motion_data.x, motion_data.y, motion_data.z };
+            api->addGyro(t, p);
             if (main.displayImuSamples)
                 gyroVisu.addSample(t, p);
 
@@ -697,101 +637,44 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer,
             }
             break;
         }
-        case odometry::InputSample::ACCELEROMETER: {
+        case InputType::Accelerometer: {
             timer(mainTimeStats, "accelerometer");
-            double t;
-            api::Vector3d p;
-            input->getAccelerometer(t, p);
-            api.addAcc(t, { p.x, p.y, p.z });
+            auto motion = frame.as<rs2::motion_frame>();
+            auto t = motion.get_timestamp();
+            auto motion_data = motion.get_motion_data();
+            api::Vector3d p { motion_data.x, motion_data.y, motion_data.z };
+            api->addAcc(t, p);
             if (main.displayImuSamples)
                 accVisu.addSample(t, p);
             break;
         }
-        case odometry::InputSample::FRAME: {
+        case InputType::Video: {
             if (mainTimeStats)
                 mainTimeStats->startFrame();
             timer(mainTimeStats, "frame");
 
-            double t;
+            auto video = frame.as<rs2::video_frame>();
+            auto t = video.get_timestamp();
+
+            assert(video.get_data_size() == video.get_width() * video.get_height() * video.get_bytes_per_pixel());
+            // Lifetime of frame data?
+            cv::Mat input_frame { HEIGHT, WIDTH, CV_8UC3, video.get_data() };
+
             int framesInd;
-            input->getFrames(t, framesInd, frames);
+            input.getFrames(t, framesInd, frames);
             assert(frames.size() >= (useStereo ? 2 : 1));
 
-            int skipNFrames = 0;
-            if (firstFrame) {
-                // The first frame number should ideally be 0 so that
-                // the modulus operation below doesn't skip early frames,
-                // but in some Android recordings it is 1.
-                if (framesInd > 1) {
-                    log_warn("First frame number is %d.", framesInd);
-                }
-                firstFrame = false;
-                lastFramesInd = framesInd;
-            } else {
-                // Check frame indices are consecutive.
-                if (!useStereo) {
-                    int expectedFrameNumber = lastFramesInd + 1;
-                    if (framesInd > expectedFrameNumber) {
-                        log_warn("skipping frame numbers %d to %d", expectedFrameNumber,
-                            framesInd - 1);
-                        assert(cmd.parameters.odometry.allowSkippedFrames);
-                        skipNFrames = framesInd - expectedFrameNumber;
-                    } else if (framesInd < expectedFrameNumber) {
-                        log_warn("missing / duplicate / out-of-order frame %d", framesInd);
-                        assert(cmd.parameters.odometry.allowSkippedFrames);
-                        continue;
-                    }
-                }
-                lastFramesInd = framesInd;
-            }
+            // Check frame indices are consecutive?
 
-            bool gotFrame = false;
-            for (int j = 0; j < skipNFrames + 1; ++j) {
-                for (int cameraInd : cameraInds) {
-                    auto frame = videoConfig.videoInputs.at(cameraInd)->readFrame();
-                    inputFrames[cameraInd] = frame;
-                    gotFrame = !!frame;
-                    // Happens with OpenCV input at the end of the video sometimes.
-                    if (frame->rows == 0 && frame->cols == 0) {
-                        log_debug("Discarding a bad frame.");
-                        gotFrame = false;
-                    }
-
-                    if (!gotFrame)
-                        break;
-
-                    assert(frame->cols == videoConfig.algorithmWidth && frame->rows == videoConfig.algorithmHeight);
-
-                    if (videoConfig.algorithmScale != 1.0) {
-                        odometry::InputFrame& meta = frames.at(cameraInd);
-                        meta.intrinsic.focalLengthX *= videoConfig.algorithmScale;
-                        meta.intrinsic.focalLengthY *= videoConfig.algorithmScale;
-                    }
-                }
-                if (!gotFrame)
-                    break;
-            }
-
-            if (framesInd % videoConfig.frameSub != 0) {
-                if (!cmd.parameters.tracker.useStereo && debugParameters.videoRecordingPath.empty()) {
-                    // Record also skipped frames so that the frame data remains
-                    // compatible with video.
-                    // TODO: Separate recorder?
-                    apiPtr->recordFrames(t, 0.0, &frames[0].intrinsic);
-                }
-                break;
-            }
-            if (!gotFrame)
-                break;
-
-            processedFrames++;
-            if (maxFrames > 0 && processedFrames > maxFrames) {
-                shouldQuit = true;
-            }
+            // if (videoConfig.algorithmScale != 1.0) {
+            //     odometry::InputFrame& meta = frames.at(cameraInd);
+            //     meta.intrinsic.focalLengthX *= videoConfig.algorithmScale;
+            //     meta.intrinsic.focalLengthY *= videoConfig.algorithmScale;
+            // }
 
             if (cmd.parameters.verbosity >= odometry::Parameters::VERBOSITY_DEBUG && apiOutput) {
                 // TODO: Relies on internal API
-                auto& debug = reinterpret_cast<api::InternalAPI::Output const&>(*apiOutput);
+                auto& debug = reinterpret_cast<const api::InternalAPI::Output&>(*apiOutput);
                 std::cout << debug.stateAsString << std::endl;
                 // Velocity pseudo update only considers the x and y components, so
                 // this print can give some idea how it's doing.
@@ -801,68 +684,51 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer,
                           << " FPS " << fpsMeter.update() << std::endl;
             }
             if (cmd.parameters.verbosity >= odometry::Parameters::VERBOSITY_EXTRA) {
-                std::cout << "t in microseconds "
-                          << static_cast<long>(std::round(t * 1e6)) << std::endl;
+                std::cout << "t in microseconds " << static_cast<long>(std::round(t * 1e6)) << std::endl;
             }
-
-            if (cameraPaused && t < cameraPauseStartTime + CAMERA_PAUSE_LENGTH_SECONDS) {
-                break;
-            }
-            cameraPaused = false;
 
             shouldVisualize = true;
 
             if (cmd.parameters.tracker.matchSuccessiveIntensities > 0.0) {
-                cv::Mat& im = *inputFrames[0];
-                if (im.type() != CV_8UC1)
-                    cvtColor(im, im, cv::COLOR_BGR2GRAY);
+                if (input_frame.type() != CV_8UC1)
+                    cvtColor(input_frame, input_frame, cv::COLOR_BGR2GRAY);
                 if (prevGrayFrame.empty())
-                    prevGrayFrame = im.clone();
-                tracker::util::matchIntensities(
-                    prevGrayFrame, im,
-                    cmd.parameters.tracker.matchSuccessiveIntensities);
-                im.copyTo(prevGrayFrame);
+                    prevGrayFrame = input_frame.clone();
+                tracker::util::matchIntensities(prevGrayFrame, input_frame, cmd.parameters.tracker.matchSuccessiveIntensities);
+                input_frame.copyTo(prevGrayFrame);
             }
-            if (cmd.parameters.tracker.useStereo && cmd.parameters.tracker.matchStereoIntensities) {
-                assert(frames.size() == 2);
-                cv::Mat& im0 = *inputFrames[0];
-                cv::Mat& im1 = *inputFrames[1];
-                if (im0.type() != CV_8UC1)
-                    cvtColor(im0, im0, cv::COLOR_BGR2GRAY);
-                if (im1.type() != CV_8UC1)
-                    cvtColor(im1, im1, cv::COLOR_BGR2GRAY);
-                tracker::util::matchIntensities(im0, im1);
-            }
+            // if (cmd.parameters.tracker.useStereo && cmd.parameters.tracker.matchStereoIntensities) {
+            //     assert(frames.size() == 2);
+            //     cv::Mat& im0 = *inputFrames[0];
+            //     cv::Mat& im1 = *inputFrames[1];
+            //     if (im0.type() != CV_8UC1)
+            //         cvtColor(im0, im0, cv::COLOR_BGR2GRAY);
+            //     if (im1.type() != CV_8UC1)
+            //         cvtColor(im1, im1, cv::COLOR_BGR2GRAY);
+            //     tracker::util::matchIntensities(im0, im1);
+            // }
 
-            std::vector<std::shared_ptr<accelerated::Image>> frameImages;
-            for (size_t i = 0; i < cameraInds.size(); ++i) {
-                int cameraInd = cameraInds[i];
-                assert(inputFrames.at(cameraInd)->data != nullptr);
-                auto openCvImg = accelerated::opencv::ref(*inputFrames.at(cameraInd),
-                    true); // prefer fixed point
-                if (main.gpu) {
+            accelerated::Image* frameImage;
+            auto openCvImg = accelerated::opencv::ref(input_frame, true); // prefer fixed point
+            if (main.gpu) {
 #ifdef DAZZLING_GPU_ENABLED
-                    if (!gpuImageFactory)
-                        gpuImageFactory = accelerated::opengl::Image::createFactory(
-                            visualizer.getProcessor());
-                    if (!gpuInputImages[i])
-                        gpuInputImages[i] = gpuImageFactory->createLike(*openCvImg);
-                    // async, but no need to wait here.
-                    // NOTE: there is a risk that the cv::Mat is freed / overwritten
-                    // unless there is sufficient buffering in VideoInput
-                    accelerated::opencv::copy(*inputFrames.at(cameraInd),
-                        *gpuInputImages[i]);
-                    frameImages.push_back(gpuInputImages[i]);
+                if (!gpuImageFactory)
+                    gpuImageFactory = accelerated::opengl::Image::createFactory(visualizer.getProcessor());
+                if (!gpuInputImage)
+                    gpuInputImage = gpuImageFactory->createLike(*openCvImg);
+                // async, but no need to wait here.
+                // NOTE: there is a risk that the cv::Mat is freed / overwritten
+                // unless there is sufficient buffering in VideoInput
+                accelerated::opencv::copy(input_frame, *gpuInputImage);
+                frameImage = gpuInputImage.get();
 #else
-                    assert(false);
+                assert(false);
 #endif
-                } else {
-                    frameImages.push_back(std::move(openCvImg));
-                }
+            } else {
+                frameImage = openCvImg.get();
             }
 
-            int const tag = 0;
-            auto& firstImage = *frameImages[0];
+            auto& firstImage = *frameImage;
 
             auto out = outputBuffer.pollOutput(t);
             didOutput = !!out;
@@ -871,62 +737,30 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer,
                 outputCounter++;
             }
 
-            api::VioApi::ColorFormat colorFormat = firstImage.channels == 1 ? api::VioApi::ColorFormat::GRAY
-                                                                            : api::VioApi::ColorFormat::RGB;
+            auto colorFormat = firstImage.channels == 1 ? api::VioApi::ColorFormat::GRAY : api::VioApi::ColorFormat::RGB;
 
-            if (!cmd.parameters.tracker.useStereo) {
-                assert(t == frames[0].t);
-                visualizer
-                    .processMaybeOnGpu([&]() {
-                        if (firstImage.storageType == accelerated::Image::StorageType::CPU) {
-                            api.addFrameMonoVarying(
-                                frames[0].t, frames[0].intrinsic, firstImage.width,
-                                firstImage.height,
-                                accelerated::cpu::Image::castFrom(firstImage).getDataRaw(),
-                                colorFormat, tag);
-                        } else {
+            visualizer.processMaybeOnGpu([&] {
+                          if (firstImage.storageType == accelerated::Image::StorageType::CPU) {
+                              api->addFrameMonoVarying(
+                                  t, intrinsic, firstImage.width,
+                                  firstImage.height,
+                                  accelerated::cpu::Image::castFrom(firstImage).getDataRaw(),
+                                  colorFormat, 0);
+                          } else {
 #ifdef DAZZLING_GPU_ENABLED
-                            api.addFrameMonoOpenGl(
-                                frames[0].t, frames[0].intrinsic, firstImage.width,
-                                firstImage.height,
-                                accelerated::opengl::Image::castFrom(firstImage)
-                                    .getTextureId(),
-                                colorFormat, tag);
+                              api->addFrameMonoOpenGl(
+                                  t, intrinsic, firstImage.width,
+                                  firstImage.height,
+                                  accelerated::opengl::Image::castFrom(firstImage).getTextureId(),
+                                  colorFormat, 0);
 #endif
-                        }
-                    })
-                    .wait();
-            } else {
-                auto& secondImage = *frameImages[1];
-                visualizer
-                    .processMaybeOnGpu([&]() {
-                        if (firstImage.storageType == accelerated::Image::StorageType::CPU) {
-                            api.addFrameStereo(
-                                frames[0].t, firstImage.width, firstImage.height,
-                                accelerated::cpu::Image::castFrom(firstImage).getDataRaw(),
-                                accelerated::cpu::Image::castFrom(secondImage).getDataRaw(),
-                                colorFormat, tag);
-                        } else {
-#ifdef DAZZLING_GPU_ENABLED
-                            api.addFrameStereoOpenGl(
-                                frames[0].t, firstImage.width, firstImage.height,
-                                accelerated::opengl::Image::castFrom(firstImage)
-                                    .getTextureId(),
-                                accelerated::opengl::Image::castFrom(secondImage)
-                                    .getTextureId(),
-                                colorFormat, tag);
-#endif
-                        }
-                    })
-                    .wait();
-            }
+                          }
+                      })
+                .wait();
 
-            for (size_t frameIdx = 0; frameIdx < frames.size(); ++frameIdx) {
-                lastIntrinsic[frameIdx] = frames[frameIdx].intrinsic;
-            }
             break;
-        } // case FRAME
-        } // switch inputType
+        }
+        }
 
         if (outputCounter % main.visuUpdateInterval != 0)
             shouldVisualize = false;
@@ -938,67 +772,52 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer,
                 if (!frameVisualizationImage)
                     frameVisualizationImage = visualizationVideo->createDefaultRenderTarget();
                 visualizationVideo->update(apiOutput);
-                visualizer
-                    .processMaybeOnGpu(
-                        [&]() { visualizationVideo->render(*frameVisualizationImage); })
-                    .wait();
+                visualizer.processMaybeOnGpu([&] { visualizationVideo->render(*frameVisualizationImage); }).wait();
                 if (frameVisualizationImage->storageType == accelerated::Image::StorageType::CPU) {
                     // The visualization produced output in CPU format (as a cv::Mat)
                     cpuVisuFrame = accelerated::opencv::ref(*frameVisualizationImage);
                 } else {
                     // ... in GPU format
-                    accelerated::opencv::copy(*frameVisualizationImage, cpuVisuFrame)
-                        .wait();
+                    accelerated::opencv::copy(*frameVisualizationImage, cpuVisuFrame).wait();
                     // note: it would also be relatively simple to GPU-rescale here
                 }
                 // Scale and rotate for display on screen.
                 if (videoConfig.displayScale == 1.0) {
                     resizedColorFrame = cpuVisuFrame;
                 } else {
-                    cv::resize(cpuVisuFrame, resizedColorFrame, cv::Size(),
-                        videoConfig.displayScale, videoConfig.displayScale,
-                        cv::INTER_CUBIC);
+                    cv::resize(cpuVisuFrame, resizedColorFrame, cv::Size(), videoConfig.displayScale, videoConfig.displayScale, cv::INTER_CUBIC);
                 }
-                tracker::util::rotateMatrixCW90(resizedColorFrame, rotatedColorFrame,
-                    rotation);
+                tracker::util::rotateMatrixCW90(resizedColorFrame, rotatedColorFrame, rotation);
                 visualizer.addVisualizationMat("odometry", rotatedColorFrame);
             }
             if (main.displayCorrelation) {
                 if (!visualizationKfCorrelation)
-                    visualizationKfCorrelation = apiPtr->createVisualization("KF_CORRELATION");
-                visualizer
-                    .processMaybeOnGpu(
-                        [&]() { visualizationKfCorrelation->render(corrFrame); })
-                    .wait();
+                    visualizationKfCorrelation = api->createVisualization("KF_CORRELATION");
+                visualizer.processMaybeOnGpu([&]() { visualizationKfCorrelation->render(corrFrame); }).wait();
                 visualizer.addVisualizationMat("correlation", corrFrame);
             }
             if (main.displayPose && apiOutput) {
                 constexpr int gray = 150;
                 poseFrame = cv::Scalar(gray, gray, gray);
                 if (!visualizationPose)
-                    visualizationPose = apiPtr->createVisualization("POSE");
+                    visualizationPose = api->createVisualization("POSE");
                 visualizationPose->update(apiOutput);
                 if (visualizationPose->ready()) {
-                    visualizer
-                        .processMaybeOnGpu(
-                            [&]() { visualizationPose->render(poseFrame); })
-                        .wait();
+                    visualizer.processMaybeOnGpu([&]() { visualizationPose->render(poseFrame); }).wait();
                     visualizer.addVisualizationMat("pose", poseFrame);
                 }
             }
             if (main.displayCovarianceMagnitude) {
                 if (!visualizationCovarianceMagnitude)
-                    visualizationCovarianceMagnitude = apiPtr->createVisualization("COVARIANCE_MAGNITUDES");
-                visualizer
-                    .processMaybeOnGpu([&]() {
-                        visualizationCovarianceMagnitude->render(magnitudeFrame);
-                    })
+                    visualizationCovarianceMagnitude = api->createVisualization("COVARIANCE_MAGNITUDES");
+                visualizer.processMaybeOnGpu([&]() {
+                              visualizationCovarianceMagnitude->render(magnitudeFrame);
+                          })
                     .wait();
-                visualizer.addVisualizationMat(
-                    "covariance magnitude, absolute, log scale", magnitudeFrame);
+                visualizer.addVisualizationMat("covariance magnitude, absolute, log scale", magnitudeFrame);
             }
             if (main.displayImuSamples && apiOutput) {
-                double const t = apiOutput->pose.time;
+                const double t = apiOutput->pose.time;
                 visualizer.addVisualizationMat("gyroscope", gyroVisu.draw(t));
                 visualizer.addVisualizationMat("accelerometer", accVisu.draw(t));
             }
@@ -1039,16 +858,16 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer,
                         break;
                     }
                     if (valid && main.displayPose) {
-                        bool value = apiPtr->getPoseOverlayHistoryShown(kind);
-                        apiPtr->setPoseOverlayHistoryShown(kind, !value);
+                        bool value = api->getPoseOverlayHistoryShown(kind);
+                        api->setPoseOverlayHistoryShown(kind, !value);
                     }
                 } else if (command.type == CommandQueue::Type::LOCK_BIASES) {
-                    apiPtr->lockBiases();
+                    api->lockBiases();
                 } else if (command.type == CommandQueue::Type::ROTATE) {
                     rotation++;
                     visualizer.setFrameRotation(rotation);
                 } else if (command.type == CommandQueue::Type::CONDITION_ON_LAST_POSE) {
-                    apiPtr->conditionOnLastPose();
+                    api->conditionOnLastPose();
                 } else if (command.type == CommandQueue::Type::NONE) {
                     // This shouldn't happen, because we check that Queue isn't empty
                     break;
@@ -1063,29 +882,22 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer,
             break;
     }
 
-#ifdef DAZZLING_GPU_ENABLED
-    for (auto& img : gpuInputImages)
-        img.reset();
-    gpuImageFactory.reset();
-#endif
-
     frameVisualizationImage.reset();
     apiOutput.reset();
 
     if (!main.skipOpenGlCleanup) {
-        visualizer
-            .processMaybeOnGpu([&]() {
-                log_debug("api.cleanupOpenGl()");
-                api.destroyOpenGl();
-            })
+        visualizer.processMaybeOnGpu([&] {
+                      log_debug("api->cleanupOpenGl()");
+                      api->destroyOpenGl();
+                  })
             .wait();
     }
 
     visualizer.terminate();
 
     // Blocks until the SLAM worker threads have quit
-    log_debug("apiPtr.reset()");
-    apiPtr.reset();
+    log_debug("api.reset()");
+    api.reset();
 
     if (odometry::TIME_STATS) {
         log_info("Odometry %s", odometry::TIME_STATS->perFrameTimings().c_str());
@@ -1121,21 +933,21 @@ int main(int argc, char* argv[])
     CommandLineParameters cmd(argc, argv);
     util::setup_logging(cmd.cmd.main.logLevel);
 
-    bool const anyVisualizations = cmd.cmd.main.displayPose || cmd.cmd.main.visualUpdateViewer || cmd.cmd.main.displayVideo || cmd.cmd.main.displayCorrelation || cmd.cmd.main.displayCovarianceMagnitude || cmd.cmd.main.displayImuSamples || cmd.cmd.main.displayStereoMatching || cmd.cmd.slam.displayViewer || cmd.cmd.slam.displayKeyframe || cmd.cmd.slam.visualizeMapPointSearch || cmd.cmd.slam.visualizeOrbMatching || cmd.cmd.slam.visualizeLoopOrbMatching;
+    const bool anyVisualizations = cmd.cmd.main.displayPose || cmd.cmd.main.visualUpdateViewer || cmd.cmd.main.displayVideo || cmd.cmd.main.displayCorrelation || cmd.cmd.main.displayCovarianceMagnitude || cmd.cmd.main.displayImuSamples || cmd.cmd.main.displayStereoMatching || cmd.cmd.slam.displayViewer || cmd.cmd.slam.displayKeyframe || cmd.cmd.slam.visualizeMapPointSearch || cmd.cmd.slam.visualizeOrbMatching || cmd.cmd.slam.visualizeLoopOrbMatching;
 
 #ifdef __APPLE__
-    bool const visuInMainThread = anyVisualizations;
-    bool const needVisualProcessing = anyVisualizations;
+    const bool visuInMainThread = anyVisualizations;
+    const bool needVisualProcessing = anyVisualizations;
     if (anyVisualizations && cmd.cmd.main.gpu) {
         assert(false && "Visualization aren't supported on Mac with -gpu flag");
     }
 #else
     constexpr bool visuInMainThread = false;
-    bool const needVisualProcessing = anyVisualizations || cmd.cmd.main.gpu;
+    const bool needVisualProcessing = anyVisualizations || cmd.cmd.main.gpu;
 #endif
 
-    bool const mapViewer = cmd.parameters.slam.useSlam && cmd.cmd.slam.displayViewer;
-    bool const vuViewer = cmd.cmd.main.visualUpdateViewer;
+    const bool mapViewer = cmd.parameters.slam.useSlam && cmd.cmd.slam.displayViewer;
+    const bool vuViewer = cmd.cmd.main.visualUpdateViewer;
     Visualizer visualizer(cmd.cmd, mapViewer, vuViewer);
     auto ret = visuInMainThread ? std::async(run_algorithm, argc, argv,
                    std::ref(visualizer), std::ref(cmd))
