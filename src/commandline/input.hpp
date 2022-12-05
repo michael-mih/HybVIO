@@ -5,9 +5,7 @@
 #include "../api/vio.hpp"
 #include "../tracker/camera.hpp"
 
-namespace odometry {
 struct CommandLineParameters;
-}
 
 enum class InputType {
     Gyroscope,
@@ -26,14 +24,7 @@ public:
      * Read algorithm parameters.
      * @param cmdParameters Struct to which parameters will be placed.
      */
-    void set_parameters(odometry::CommandLineParameters& cmdParameters);
-    bool getParametersAvailable() const;
-    std::map<api::PoseHistory, std::vector<api::Pose>> getPoseHistories();
-    std::string getLastJSONL() const;
-    /**
-     * True for JSONL input, false otherwise.
-     */
-    bool canEcho() const;
+    void set_parameters(CommandLineParameters& cmdParameters);
 
     double get_fps() const;
     void get_resolution(int& width, int& height) const;
