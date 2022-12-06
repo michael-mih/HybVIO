@@ -318,9 +318,8 @@ InputImu setupInputAndOutput(CommandLineParameters& cmd, VideoConfig& videoConfi
     // display window, scale the already scaled algorithm input image.
     videoConfig.displayScale = displayLongerSide / algoLongerSide;
 
-    if (videoConfig.algorithmScale != 1.0) {
+    if (videoConfig.algorithmScale != 1.0)
         assert(!"Should resize to algorithm{Width,Height}");
-    }
 
     return input;
 }
@@ -545,7 +544,7 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer, CommandLinePar
             assert(video.get_data_size() == video.get_width() * video.get_height() * video.get_bytes_per_pixel());
 
             // Lifetime of frame data?
-            cv::Mat input_frame { video.get_height(), video.get_width(), CV_8UC3, video.get_data() };
+            cv::Mat input_frame { video.get_height(), video.get_width(), CV_8UC3, const_cast<void*>(video.get_data()) }; // const_cast is a hack
 
             // Check frame indices are consecutive?
 

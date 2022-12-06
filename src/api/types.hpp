@@ -1,13 +1,15 @@
 #ifndef DAZZLING_TYPES_HPP
 #define DAZZLING_TYPES_HPP
 
+#include <array>
+
 // Common types, can be included "everywhere"
 #include "jsonl-recorder/types.hpp"
 
 namespace api {
-using Vector3d = recorder::Vector3d;
-using Quaternion = recorder::Quaternion;
-using Pose = recorder::Pose;
+using recorder::Pose;
+using recorder::Quaternion;
+using recorder::Vector3d;
 
 /**
  * A 3x3 matrix, row major (accessed as m[row][col]).

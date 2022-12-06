@@ -2,6 +2,7 @@
 
 #include "../api/types.hpp"
 #include "input.hpp"
+#include "parameters.hpp"
 
 static constexpr auto WIDTH = 1280,
                       HEIGHT = 720,
@@ -18,7 +19,7 @@ InputImu::InputImu()
 
 InputImu::~InputImu() { m_pipeline.stop(); }
 
-std::pair<InputType, rs2::frame> InputImu::next_frame();
+std::pair<InputType, rs2::frame> InputImu::next_frame()
 {
     auto frame = *m_pipeline.wait_for_frames().begin();
     InputType type;
@@ -62,7 +63,7 @@ void InputImu::get_resolution(int& width, int& height) const
     height = intrin.height;
 }
 
-CameraParameters InputImu::get_frame_intrin() const
+api::CameraParameters InputImu::get_frame_intrin() const
 {
     auto intrin = m_pipeline.get_active_profile().get_stream(RS2_STREAM_COLOR).as<rs2::video_stream_profile>().get_intrinsics();
     if (intrin.model != RS2_DISTORTION_NONE)

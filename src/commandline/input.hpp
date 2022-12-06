@@ -28,7 +28,7 @@ public:
 
     double get_fps() const;
     void get_resolution(int& width, int& height) const;
-    CameraParameters get_frame_intrin() const;
+    api::CameraParameters get_frame_intrin() const;
 
 private:
     rs2::pipeline m_pipeline;

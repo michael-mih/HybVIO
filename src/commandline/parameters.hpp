@@ -1,12 +1,14 @@
 #ifndef COMMANDLINE_PARAMETERS_HPP
 #define COMMANDLINE_PARAMETERS_HPP
 
-#include <iostream>
-#include "../odometry/parameters.hpp"
-#include "codegen/output/cmd_parameters.hpp"
-#include "../util/parameter_parser.hpp"
+#include <fstream>
 #include <iomanip>
+#include <iostream>
 #include <nlohmann/json.hpp>
+
+#include "../odometry/parameters.hpp"
+#include "../util/parameter_parser.hpp"
+#include "codegen/output/cmd_parameters.hpp"
 
 struct CommandLineParameters {
     odometry::Parameters parameters;
