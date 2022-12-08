@@ -387,7 +387,7 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer, CommandLinePar
         visualizer.getCommands().keyboardInput('a'); // TODO. hacky
     }
 
-    auto api = api::buildVio(debugParameters);
+    std::shared_ptr api = api::buildVio(debugParameters);
 
     api::OutputBuffer outputBuffer;
     outputBuffer.targetDelaySeconds = debugParameters.api.parameters.odometry.targetOutputDelaySeconds;
@@ -465,10 +465,8 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer, CommandLinePar
     visualizer.setFrameRotation(rotation);
 
     double lastVisuTime = 0.0;
-    bool firstFrame = true;
     bool shouldQuit = false;
     int outputCounter = 0;
-    int lastFramesInd = 0;
     bool useStereo = cmd.parameters.tracker.useStereo;
     std::shared_ptr<const api::VioApi::VioOutput> apiOutput = nullptr;
 
@@ -497,18 +495,17 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer, CommandLinePar
     };
 
     for (;;) {
-        auto [type, frame] = input.next_frame();
+        auto [gyro_frame, acc_frame] = input.next_imu_frame();
 
         bool shouldVisualize = false;
         constexpr double INS_ONLY_VISU_INTERVAL = 0.1; // seconds
         bool didOutput = false;
 
-        switch (type) {
-        case InputType::Gyroscope: {
+        // Gyro frame ("leader") must be added before the acc frame ("follower")
+        {
             timer(mainTimeStats, "gyroscope");
-            auto motion = frame.as<rs2::motion_frame>();
-            auto t = motion.get_timestamp();
-            auto motion_data = motion.get_motion_data();
+            auto t = gyro_frame.get_timestamp();
+            auto motion_data = gyro_frame.get_motion_data();
             api::Vector3d p { motion_data.x, motion_data.y, motion_data.z };
             api->addGyro(t, p);
             if (main.displayImuSamples)
@@ -518,25 +515,25 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer, CommandLinePar
                 lastVisuTime = t;
                 shouldVisualize = true;
             }
-            break;
         }
-        case InputType::Accelerometer: {
+
+        {
             timer(mainTimeStats, "accelerometer");
-            auto motion = frame.as<rs2::motion_frame>();
-            auto t = motion.get_timestamp();
-            auto motion_data = motion.get_motion_data();
+            auto t = acc_frame.get_timestamp();
+            auto motion_data = acc_frame.get_motion_data();
             api::Vector3d p { motion_data.x, motion_data.y, motion_data.z };
             api->addAcc(t, p);
             if (main.displayImuSamples)
                 accVisu.addSample(t, p);
-            break;
         }
-        case InputType::Video: {
+
+        {
+            auto video = input.next_video_frame().as<rs2::video_frame>();
+
             if (mainTimeStats)
                 mainTimeStats->startFrame();
             timer(mainTimeStats, "frame");
 
-            auto video = frame.as<rs2::video_frame>();
             auto t = video.get_timestamp();
 
             // If resized, then sizes are not equal
@@ -640,9 +637,6 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer, CommandLinePar
                           }
                       })
                 .wait();
-
-            break;
-        }
         }
 
         if (outputCounter % main.visuUpdateInterval != 0)

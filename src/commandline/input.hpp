@@ -7,10 +7,9 @@
 
 struct CommandLineParameters;
 
-enum class InputType {
-    Gyroscope,
-    Accelerometer,
-    Video
+struct IMUFrame {
+    rs2::motion_frame gyro;
+    rs2::motion_frame acc;
 };
 
 class InputImu {
@@ -18,7 +17,8 @@ public:
     InputImu();
     ~InputImu();
 
-    std::pair<InputType, rs2::frame> next_frame();
+    rs2::video_frame next_video_frame();
+    IMUFrame next_imu_frame();
 
     /**
      * Read algorithm parameters.
@@ -31,5 +31,6 @@ public:
     api::CameraParameters get_frame_intrin() const;
 
 private:
-    rs2::pipeline m_pipeline;
+    rs2::pipeline m_video_pipeline;
+    rs2::pipeline m_imu_pipeline;
 };

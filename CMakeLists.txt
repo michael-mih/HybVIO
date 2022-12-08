@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 3.0)
 project(hybvio VERSION 1.0.0 DESCRIPTION "HybVIO VIO/SLAM runner")
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -Wall -Wextra -O2 -fdiagnostics-color=always")
+set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Wall -Wextra -O2 -fdiagnostics-color=always")
 # allow building a single shared library (adds -fPIC when compiling static libs)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # Generate `compile_commands.json` for `clang-tidy`.
@@ -172,7 +174,11 @@ if(BUILD_CLI_TOOLS)
     src/commandline/videoutil.cpp
     ${VISU_SRCS}
     ${SLAM_SRCS})
-  target_link_libraries(main PRIVATE odometry parameters ${LIBS} ${VISU_LIBS} ${SLAM_LIBS})
+
+  add_library(realsense2 SHARED IMPORTED GLOBAL)
+  set_target_properties(realsense2 PROPERTIES IMPORTED_LOCATION /home/michael/librealsense/build/librealsense2.so)
+
+  target_link_libraries(main PRIVATE odometry parameters ${LIBS} ${VISU_LIBS} ${SLAM_LIBS} realsense2)
 
   # Put binaries from subdirectories (test) to the target directory.
   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
