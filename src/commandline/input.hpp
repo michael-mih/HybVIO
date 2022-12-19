@@ -10,6 +10,7 @@ struct CommandLineParameters;
 struct IMUFrame {
     rs2::motion_frame gyro;
     rs2::motion_frame acc;
+    rs2::video_frame video;
 };
 
 class InputImu {
@@ -17,7 +18,6 @@ public:
     InputImu();
     ~InputImu();
 
-    rs2::video_frame next_video_frame();
     IMUFrame next_imu_frame();
 
     /**
@@ -31,6 +31,5 @@ public:
     api::CameraParameters get_frame_intrin() const;
 
 private:
-    rs2::pipeline m_video_pipeline;
-    rs2::pipeline m_imu_pipeline;
+    rs2::pipeline m_pipeline;
 };

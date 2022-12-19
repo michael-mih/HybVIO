@@ -303,7 +303,7 @@ public:
         for (size_t i1 = frames.size(); i1 > 0; i1--) {
             size_t i = i1 - 1;
             if (static_cast<int>(frames[i]->leaderIndex) == indexL) {
-                if (frames[i]->leaderTimeDiff > 0.01) {
+                if (frames[i]->leaderTimeDiff > 0.02) {
                     // If the comparison constant is suited to the sensor
                     // framerates, this print probably shouldn't happen.
                     log_warn("Camera frame #%zu with large time difference to leader: (%.4f)s",

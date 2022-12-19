@@ -494,17 +494,22 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer, CommandLinePar
         });
     };
 
+    double previous_timestamp = -1;
+    double previous_gyro_timestamp = -1;
+    double previous_acc_timestamp = -1;
+
     for (;;) {
-        auto [gyro_frame, acc_frame] = input.next_imu_frame();
+        auto [gyro_frame, acc_frame, video_frame] = input.next_imu_frame();
 
         bool shouldVisualize = false;
         constexpr double INS_ONLY_VISU_INTERVAL = 0.1; // seconds
         bool didOutput = false;
 
         // Gyro frame ("leader") must be added before the acc frame ("follower")
-        {
+        if (auto timestamp = gyro_frame.get_timestamp(); timestamp > previous_gyro_timestamp) {
+            previous_gyro_timestamp = timestamp;
             timer(mainTimeStats, "gyroscope");
-            auto t = gyro_frame.get_timestamp();
+            auto t = gyro_frame.get_timestamp() / 1000.0;
             auto motion_data = gyro_frame.get_motion_data();
             api::Vector3d p { motion_data.x, motion_data.y, motion_data.z };
             api->addGyro(t, p);
@@ -515,33 +520,38 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer, CommandLinePar
                 lastVisuTime = t;
                 shouldVisualize = true;
             }
+        } else {
+            log_debug("dup gyro");
         }
 
-        {
+        if (auto timestamp = acc_frame.get_timestamp(); timestamp > previous_acc_timestamp) {
+            previous_acc_timestamp = timestamp;
             timer(mainTimeStats, "accelerometer");
-            auto t = acc_frame.get_timestamp();
+            auto t = acc_frame.get_timestamp() / 1000.0;
             auto motion_data = acc_frame.get_motion_data();
             api::Vector3d p { motion_data.x, motion_data.y, motion_data.z };
             api->addAcc(t, p);
             if (main.displayImuSamples)
                 accVisu.addSample(t, p);
+        } else {
+            log_debug("dup acc");
         }
 
-        {
-            auto video = input.next_video_frame().as<rs2::video_frame>();
+        if (auto timestamp = video_frame.get_timestamp(); timestamp > previous_timestamp) {
+            previous_timestamp = timestamp;
 
             if (mainTimeStats)
                 mainTimeStats->startFrame();
             timer(mainTimeStats, "frame");
 
-            auto t = video.get_timestamp();
+            auto t = timestamp / 1000.0;
 
             // If resized, then sizes are not equal
-            assert(video.get_width() == videoConfig.inputWidth && video.get_height() == videoConfig.inputHeight);
-            assert(video.get_data_size() == video.get_width() * video.get_height() * video.get_bytes_per_pixel());
+            assert(video_frame.get_width() == videoConfig.inputWidth && video_frame.get_height() == videoConfig.inputHeight);
+            assert(video_frame.get_data_size() == video_frame.get_width() * video_frame.get_height() * video_frame.get_bytes_per_pixel());
 
             // Lifetime of frame data?
-            cv::Mat input_frame { video.get_height(), video.get_width(), CV_8UC3, const_cast<void*>(video.get_data()) }; // const_cast is a hack
+            cv::Mat input_frame { video_frame.get_height(), video_frame.get_width(), CV_8UC1, const_cast<void*>(video_frame.get_data()) }; // const_cast is a hack
 
             // Check frame indices are consecutive?
 
@@ -637,6 +647,8 @@ int run_algorithm(int argc, char* argv[], Visualizer& visualizer, CommandLinePar
                           }
                       })
                 .wait();
+        } else {
+            log_debug("dup");
         }
 
         if (outputCounter % main.visuUpdateInterval != 0)
@@ -806,6 +818,8 @@ int main(int argc, char* argv[])
 {
     CommandLineParameters cmd(argc, argv);
     util::setup_logging(cmd.cmd.main.logLevel);
+
+    cmd.parameters.odometry.sampleSyncFrameBufferSize = 30;
 
     const bool anyVisualizations = cmd.cmd.main.displayPose || cmd.cmd.main.visualUpdateViewer || cmd.cmd.main.displayVideo || cmd.cmd.main.displayCorrelation || cmd.cmd.main.displayCovarianceMagnitude || cmd.cmd.main.displayImuSamples || cmd.cmd.main.displayStereoMatching || cmd.cmd.slam.displayViewer || cmd.cmd.slam.displayKeyframe || cmd.cmd.slam.visualizeMapPointSearch || cmd.cmd.slam.visualizeOrbMatching || cmd.cmd.slam.visualizeLoopOrbMatching;
 
